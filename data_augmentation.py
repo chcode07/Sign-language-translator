@@ -39,13 +39,12 @@ def augment_landmarks(sequence, num_variations=10):
 
         # 3. Temporal shift (timing variation)
         if frames > 1:
-            shift = np.random.randint(-2, 3)
+            shift = np.random.randint(-2, 3)  # Shift by -2 to +2 frames
             aug = np.roll(aug, shift, axis=0)
 
         augmented_data.append(aug.astype(np.float32))
 
     return augmented_data
-
 
 # ------------------------------------------------------------
 # DATASET EXPANSION LOOP
@@ -62,7 +61,7 @@ for folder in os.listdir(DATA_ROOT):
         print(f"Skipping {folder} (no video_0.npy)")
         continue
 
-    # Load original landmark sequence
+    # Load original landmark sequence (variable length)
     original_clip = np.load(original_path)
 
     print(f"{folder} | original shape:", original_clip.shape)
