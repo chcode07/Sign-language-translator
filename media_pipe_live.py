@@ -1,101 +1,200 @@
 import mediapipe as mp
 import cv2 as cv
 import time
-import csv
-import os
 
-# --- Setup ---
+# SETUP 
+
 BaseOptions = mp.tasks.BaseOptions
-HandLandmarker = mp.tasks.vision.HandLandmarker
-HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
-HandLandmarkerResult = mp.tasks.vision.HandLandmarkerResult
 VisionRunningMode = mp.tasks.vision.RunningMode
 
-model_path = r"C:/Users/chann/major_project/hand_landmarker.task"
+HandLandmarker = mp.tasks.vision.HandLandmarker
+HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 
-# Connection map for drawing lines between joints
+FaceLandmarker = mp.tasks.vision.FaceLandmarker
+FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
+
+PoseLandmarker = mp.tasks.vision.PoseLandmarker
+PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+
+
+# MODEL PATHS 
+
+hand_model_path = r"C:/Users/chann/major_project/model_task_files/hand_landmarker.task"
+face_model_path = r"C:/Users/chann/major_project/model_task_files/face_landmarker.task"
+pose_model_path = r"C:/Users/chann/major_project/model_task_files/pose_landmarker_heavy.task"
+
+
+# LANDMARK DEFINITIONS 
+
 HAND_CONNECTIONS = [
-    (0,1), (1,2), (2,3), (3,4), (0,5), (5,6), (6,7), (7,8),
-    (0,9), (9,10), (10,11), (11,12), (0,13), (13,14), (14,15), (15,16),
-    (0,17), (17,18), (18,19), (19,20), (5,9), (9,13), (13,17)
+    (0,1), (1,2), (2,3), (3,4),
+    (0,5), (5,6), (6,7), (7,8),
+    (0,9), (9,10), (10,11), (11,12),
+    (0,13), (13,14), (14,15), (15,16),
+    (0,17), (17,18), (18,19), (19,20),
+    (5,9), (9,13), (13,17)
 ]
 
-# --- CSV Header Initialization ---
-csv_file = "landmarks.csv"
-if not os.path.exists(csv_file):
-    with open(csv_file, mode="w", newline="") as f:
-        writer = csv.writer(f)
-        # Create headers for multiple hands if needed, or keep standard 21
-        header = ["hand_idx"] + [coord for i in range(21) for coord in (f"x{i}", f"y{i}", f"z{i}")]
-        writer.writerow(header)
+POSE_LANDMARK_IDS = [11, 12, 13, 14, 15, 16]
+POSE_CONNECTIONS = [
+    (11, 13), (13, 15),
+    (12, 14), (14, 16),
+    (11, 12)
+]
 
-# Global result storage
-latest_result = None
+FACE_MOUTH_LANDMARKS = [0, 13, 14, 78, 308]
 
-def result_callback(result: HandLandmarkerResult, output_image: mp.Image, timestamp_ms: int):
-    global latest_result
-    latest_result = result
 
-# --- KEY FIX: Added num_hands=2 ---
-options = HandLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path=model_path),
+#  GLOBAL RESULTS  
+
+latest_hand_result = None
+latest_face_result = None
+latest_pose_result = None
+
+
+# CALLBACKS 
+
+def hand_callback(result, output_image, timestamp_ms):
+    global latest_hand_result
+    latest_hand_result = result
+
+
+def face_callback(result, output_image, timestamp_ms):
+    global latest_face_result
+    latest_face_result = result
+
+
+def pose_callback(result, output_image, timestamp_ms):
+    global latest_pose_result
+    latest_pose_result = result
+
+
+# REUSABLE DRAW FUNCTION 
+
+def draw_landmarks(frame, hand_result, face_result, pose_result):
+    h, w, _ = frame.shape
+
+    # HANDS 
+    if hand_result and hand_result.hand_landmarks:
+        for hand in hand_result.hand_landmarks:
+            pts = [(int(lm.x * w), int(lm.y * h)) for lm in hand]
+
+            for s, e in HAND_CONNECTIONS:
+                cv.line(frame, pts[s], pts[e], (255, 0, 0), 2)
+
+            for p in pts:
+                cv.circle(frame, p, 4, (0, 255, 0), -1)
+
+    #  FACE (MOUTH ONLY) 
+    if face_result and face_result.face_landmarks:
+        for face in face_result.face_landmarks:
+            for idx in FACE_MOUTH_LANDMARKS:
+                lm = face[idx]
+                cv.circle(
+                    frame,
+                    (int(lm.x * w), int(lm.y * h)),
+                    4,
+                    (0, 255, 255),
+                    -1
+                )
+
+    # POSE 
+    if pose_result and pose_result.pose_landmarks:
+        for pose in pose_result.pose_landmarks:
+            pts = {}
+            for i in POSE_LANDMARK_IDS:
+                lm = pose[i]
+                pts[i] = (int(lm.x * w), int(lm.y * h))
+
+            for s, e in POSE_CONNECTIONS:
+                cv.line(frame, pts[s], pts[e], (0, 255, 255), 3)
+
+            for idx, pt in pts.items():
+                cv.circle(frame, pt, 7, (0, 0, 255), -1)
+                cv.putText(
+                    frame,
+                    str(idx),
+                    (pt[0] + 5, pt[1] - 5),
+                    cv.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1
+                )
+
+    return frame
+
+
+# OPTIONS 
+
+hand_options = HandLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path=hand_model_path),
     running_mode=VisionRunningMode.LIVE_STREAM,
-    num_hands=2,  # <--- This allows detection of both hands
-    result_callback=result_callback
+    num_hands=2,
+    result_callback=hand_callback
 )
 
-with HandLandmarker.create_from_options(options) as landmarker:
-    vid = cv.VideoCapture(0)
+face_options = FaceLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path=face_model_path),
+    running_mode=VisionRunningMode.LIVE_STREAM,
+    result_callback=face_callback
+)
+
+pose_options = PoseLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path=pose_model_path),
+    running_mode=VisionRunningMode.LIVE_STREAM,
+    result_callback=pose_callback
+)
+
+
+# RUNTIME 
+
+with HandLandmarker.create_from_options(hand_options) as hand_lm, \
+     FaceLandmarker.create_from_options(face_options) as face_lm, \
+     PoseLandmarker.create_from_options(pose_options) as pose_lm:
+
+    cap = cv.VideoCapture(0)
     prev_time = time.time()
 
-    while vid.isOpened():
-        ret, frame = vid.read()
+    while cap.isOpened():
+        ret, frame = cap.read()
         if not ret:
             break
-        
-        # Mirror the frame for a more natural "selfie" view
+
         frame = cv.flip(frame, 1)
-
-        # MediaPipe needs RGB
-        rgb_frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-
-        # Send to AI
+        rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         timestamp = int(time.time() * 1000)
-        landmarker.detect_async(mp_image, timestamp)
 
-        h, w, _ = frame.shape
+        hand_lm.detect_async(mp_image, timestamp)
+        face_lm.detect_async(mp_image, timestamp)
+        pose_lm.detect_async(mp_image, timestamp)
 
-        if latest_result and latest_result.hand_landmarks:
-            # Loop through EVERY hand detected (1 or 2)
-            for idx, landmarks in enumerate(latest_result.hand_landmarks):
+        # DRAWING USING REUSABLE METHOD 
+        frame = draw_landmarks(
+            frame,
+            latest_hand_result,
+            latest_face_result,
+            latest_pose_result
+        )
 
-                # Draw Connections
-                pts = [(int(lm.x * w), int(lm.y * h)) for lm in landmarks]
-                for s, e in HAND_CONNECTIONS:
-                    cv.line(frame, pts[s], pts[e], (255, 0, 0), 2)
-                
-                # Draw Landmarks
-                for pt in pts:
-                    cv.circle(frame, pt, 5, (0, 255, 0), -1)
-        else:
-            cv.putText(frame, "No Hands Detected", (50, 50), 
-                       cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-        # FPS Calculation
+        # FPS
         curr_time = time.time()
-        fps = 1.0 / max(1e-6, (curr_time - prev_time))
+        fps = 1.0 / max(1e-6, curr_time - prev_time)
         prev_time = curr_time
-        cv.putText(frame, f"FPS: {int(fps)}", (10, 30), 
-                   cv.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        cv.putText(
+            frame,
+            f"FPS: {int(fps)}",
+            (10, 30),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 255, 0),
+            2
+        )
 
-        cv.imshow("Hand Tracking", frame)
+        cv.imshow("Sign Language Tracking", frame)
 
- #press q to exit.
-        key = cv.waitKey(1) & 0xFF
-        if key == ord('q') or key == 27: # 'q' or ESC key
-            print("Closing application...")
+        if cv.waitKey(1) & 0xFF in (27, ord('q')):
             break
 
-    vid.release()
+    cap.release()
     cv.destroyAllWindows()
