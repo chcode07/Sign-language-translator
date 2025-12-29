@@ -1,6 +1,7 @@
 import mediapipe as mp
 import cv2 as cv
 import numpy as np
+import os
 
 # SETUP 
 
@@ -140,74 +141,84 @@ pose_options = PoseLandmarkerOptions(
 
 
 # RUNTIME 
+for file_name in os.listdir("C:/Users/chann/Downloads/training_videos"):
+        
+        video_path = f"C:/Users/chann/Downloads/training_videos/{file_name}"
+        name_without_ext, _ = os.path.splitext(file_name)
+        new_dir_path = os.path.join("C:/Users/chann/major_project/data_book/", name_without_ext)
 
-video_path = r"C:/Users/chann/Downloads/A.mp4"
-output_npy = "sign_sequence.npy"
-
-sequence = []
-
-with HandLandmarker.create_from_options(hand_options) as hand_lm, \
-     FaceLandmarker.create_from_options(face_options) as face_lm, \
-     PoseLandmarker.create_from_options(pose_options) as pose_lm:
-
-    cap = cv.VideoCapture(video_path)
-
-    fps = cap.get(cv.CAP_PROP_FPS)
-    if fps == 0:
-        fps = 30
-
-    frame_idx = 0
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        timestamp = int(frame_idx * 1000 / fps)
-
-        hand_result = hand_lm.detect_for_video(mp_image, timestamp)
-        face_result = face_lm.detect_for_video(mp_image, timestamp)
-        pose_result = pose_lm.detect_for_video(mp_image, timestamp)
-
-        # FEATURE EXTRACTION 
-        frame_features = []
-
-        if hand_result.hand_landmarks:
-            for hand in hand_result.hand_landmarks[:2]:
-                frame_features.extend(normalize_hand(hand))
-        while len(frame_features) < 2 * 21 * 3:
-            frame_features.extend([0.0] * (21 * 3))
-
-        if pose_result.pose_landmarks:
-            frame_features.extend(normalize_pose(pose_result.pose_landmarks[0]))
-        else:
-            frame_features.extend([0.0] * (6 * 3))
-
-        if face_result.face_landmarks:
-            frame_features.extend(normalize_face(face_result.face_landmarks[0]))
-        else:
-            frame_features.extend([0.0] * (5 * 3))
-
-        sequence.append(frame_features)
-
-        # VISUALIZATION 
-        frame = draw_landmarks(frame, hand_result, face_result, pose_result)
-        cv.imshow("Landmark Visualization", frame)
-
-        if cv.waitKey(1) & 0xFF in (27, ord('q')):
-            break
-
-        frame_idx += 1
-
-    cap.release()
-    cv.destroyAllWindows()
+        try:
+            os.makedirs(new_dir_path, exist_ok=True)
+        except Exception as e:
+            print(f"Failed to create directory for {name_without_ext}: {e}")
 
 
-# SAVE 
+        output_npy = f"C:/Users/chann/major_project/data_book/{name_without_ext}/video_0.npy"
 
-sequence = np.array(sequence, dtype=np.float32)
-print("Final sequence shape:", sequence.shape)
-np.save(output_npy, sequence)
-print(f"Saved to {output_npy}")
+        sequence = []
+
+        with (HandLandmarker.create_from_options(hand_options) as hand_lm,
+            FaceLandmarker.create_from_options(face_options) as face_lm,
+            PoseLandmarker.create_from_options(pose_options) as pose_lm):
+
+            cap = cv.VideoCapture(video_path)
+
+            fps = cap.get(cv.CAP_PROP_FPS)
+            if fps == 0:
+                fps = 30
+
+            frame_idx = 0
+
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                timestamp = int(frame_idx * 1000 / fps)
+
+                hand_result = hand_lm.detect_for_video(mp_image, timestamp)
+                face_result = face_lm.detect_for_video(mp_image, timestamp)
+                pose_result = pose_lm.detect_for_video(mp_image, timestamp)
+
+                # FEATURE EXTRACTION 
+                frame_features = []
+
+                if hand_result.hand_landmarks:
+                    for hand in hand_result.hand_landmarks[:2]:
+                        frame_features.extend(normalize_hand(hand))
+                while len(frame_features) < 2 * 21 * 3:
+                    frame_features.extend([0.0] * (21 * 3))
+
+                if pose_result.pose_landmarks:
+                    frame_features.extend(normalize_pose(pose_result.pose_landmarks[0]))
+                else:
+                    frame_features.extend([0.0] * (6 * 3))
+
+                if face_result.face_landmarks:
+                    frame_features.extend(normalize_face(face_result.face_landmarks[0]))
+                else:
+                    frame_features.extend([0.0] * (5 * 3))
+
+                sequence.append(frame_features)
+
+                # # VISUALIZATION (only for verification)
+                # frame = draw_landmarks(frame, hand_result, face_result, pose_result)
+                # cv.imshow("Landmark Visualization", frame)
+
+                # if cv.waitKey(1) & 0xFF in (27, ord('q')):
+                #     break
+
+                frame_idx += 1
+
+            cap.release()
+            cv.destroyAllWindows()
+
+
+        # SAVE 
+
+        sequence = np.array(sequence, dtype=np.float32)
+        print("Final sequence shape:", sequence.shape)
+        np.save(output_npy, sequence)
+        print(f"Saved to {output_npy}")

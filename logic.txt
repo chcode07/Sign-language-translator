@@ -1,0 +1,15 @@
+Logic for training the custom GRU model.
+
+Step 1:
+->Collecting Data(moton pictures) for the gestures/signs.
+
+Step 2:
+-> Using mediapipe model (new API) to extract the hand, face mesh and upper body pose landmarks.
+->These landmarks extracted are to be packaged into a numpy file for every motion picture.
+
+Step 3:
+-> Building the data structure.
+->here, every the data hierarchy is sequences > frames > landmarks.
+-> landmarks extracted from a single frame form a one dimensional array, now combining the landmarks from every frame in the motion picture we create a 2-D array [ (frame, landmark) ], then we have multiple motion pictures for every gesture (sequence), thus creating a 3-D array [ (sequence, frame, landmark) ].
+
+Thus the resulting numpy will be used train the model.
