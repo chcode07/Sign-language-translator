@@ -3,12 +3,13 @@ import os
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models
+from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 
 
 # CONFIGURE
-DATASET_DIR = "D:\My Skills\majorproj\databook"   # <-- folder that contains A, B, C, ....
+DATASET_DIR = "C:/Users/chann/major_project/data_book"   # <-- folder that contains A, B, C, ....
 SEQ_LEN = 90                # fixed length for GRU
 FEATURE_DIM = 159           # from your .npy files
 
@@ -25,6 +26,7 @@ def pad_or_truncate(sequence, target_len=SEQ_LEN):
         return np.vstack((sequence, pad))
 
     return sequence
+
 
 # load dataset
 
@@ -48,10 +50,8 @@ for class_name in sorted(os.listdir(DATASET_DIR)):
             file_path = os.path.join(class_path, file)
             sequence = np.load(file_path)
 
-            # Safety check
-            if sequence.shape != (SEQ_LEN, FEATURE_DIM ):
-                print(f"⚠ Skipping {file} due to wrong shape {sequence.shape}")
-                continue
+            # APPLY PAD / TRUNCATE INSTEAD OF SKIPPING
+            sequence = pad_or_truncate(sequence)
 
             X.append(sequence)
             y.append(current_label)
@@ -79,46 +79,6 @@ X_train, X_test, y_train, y_test = train_test_split(
 
 print("\nTraining samples:", X_train.shape[0])
 print("Testing samples:", X_test.shape[0])
-X = []
-y = []
-label_map = {}
-current_label = 0
-
-print("Dataset dir:", DATASET_DIR)
-
-for class_name in sorted(os.listdir(DATASET_DIR)):
-    class_path = os.path.join(DATASET_DIR, class_name)
-    print("\nChecking class folder:", class_path)
-
-    if not os.path.isdir(class_path):
-        print("  ❌ Not a directory")
-        continue
-
-    files = os.listdir(class_path)
-    print("  Files found:", files)
-
-    label_map[current_label] = class_name
-
-    for file in files:
-        print("    Reading:", file)
-
-        file_path = os.path.join(class_path, file)
-
-        try:
-            data = np.load(file_path)
-            print("      Shape:", data.shape)
-
-            X.append(data)
-            y.append(current_label)
-
-        except Exception as e:
-            print("      ❌ Failed to load:", e)
-
-    current_label += 1
-
-print("\nFINAL RESULT")
-print("Total samples:", len(X))
-
 
 
 # CREATE 3-LAYER GRU MODEL
@@ -127,9 +87,13 @@ def create_gru_model():
     model = models.Sequential([
         layers.Input(shape=(SEQ_LEN, FEATURE_DIM )),
 
+        # IMPORTANT: Mask padded frames (zeros)
+        layers.Masking(mask_value=0.0),
+
+        # Increased GRU capacity for temporal dynamics
+        layers.GRU(128, return_sequences=True),
         layers.GRU(64, return_sequences=True),
-        layers.GRU(32, return_sequences=True),
-        layers.GRU(16),
+        layers.GRU(32),
 
         layers.Dense(NUM_CLASSES, activation="softmax")
     ])
@@ -145,23 +109,33 @@ def create_gru_model():
 
     return model
 
+
 # TRAIN MODEL
 
 model = create_gru_model()
 model.summary()
+
+early_stop = EarlyStopping(
+    monitor="val_loss",
+    patience=6,
+    restore_best_weights=True
+)
 
 history = model.fit(
     X_train, y_train,
     epochs=40,
     batch_size=32,
     validation_split=0.2,
-    shuffle=True
+    shuffle=True,
+    callbacks=[early_stop]
 )
+
 
 # Test model
 
 loss, acc = model.evaluate(X_test, y_test)
 print(f"\nTest accuracy: {acc:.4f}")
+
 
 # SAVE MODEL
 
@@ -170,5 +144,3 @@ np.save("label_map.npy", label_map)
 
 print("\n✅ Model saved as gru_sign_language_model.h5")
 print("✅ Labels saved as label_map.npy")
-
-
