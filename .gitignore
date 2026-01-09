@@ -21,3 +21,8 @@ dist/
 # Ignore OS files
 .DS_Store
 Thumbs.db
+
+# Files to be ignored
+logic.txt
+train_log.txt
+training_flow.png

@@ -17,7 +17,7 @@ def main():
 
     print("Sequence shape:", sequence.shape)
     print("\nFirst 10 values of first frame:")
-    print(sequence[0][:10])
+    print(sequence[:20][:100])
 
     print("\nMean std across features:")
     print(sequence.std(axis=0).mean())
